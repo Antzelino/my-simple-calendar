@@ -281,7 +281,7 @@
             const tbody        = document.getElementById('calendar-body');
             const scrollYSnap  = window.scrollY;
             const heightBefore = tbody.offsetHeight;
-            for (let i = 1; i <= 26; i++) {
+            for (let i = 1; i <= 52; i++) {
                 const d = new Date(loadFrom);
                 d.setDate(loadFrom.getDate() - i * 7);
                 generateWeek(d, true);
@@ -297,7 +297,7 @@
             if (isLoadingFuture) return;
             isLoadingFuture = true;
             const loadFrom = new Date(lastDate);
-            for (let i = 1; i <= 26; i++) {
+            for (let i = 1; i <= 52; i++) {
                 const d = new Date(loadFrom);
                 d.setDate(loadFrom.getDate() + i * 7);
                 generateWeek(d);
@@ -328,8 +328,10 @@
             const scrollHeight = document.body.scrollHeight;
             const clientHeight = (window.visualViewport ? window.visualViewport.height : window.innerHeight);
 
-            if (scrollTop < 500) loadMorePast();
-            if (scrollTop + clientHeight > scrollHeight - 500) loadMoreFuture();
+            const threshold    = clientHeight * 3;
+
+            if (scrollTop < threshold) loadMorePast();
+            if (scrollTop + clientHeight > scrollHeight - threshold) loadMoreFuture();
 
             if (todayRowElement) {
                 const rect = todayRowElement.getBoundingClientRect();
@@ -341,7 +343,7 @@
             if (todayRowElement) todayRowElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
         });
 
-        generateWeeksAround(today, 15, 15);
+        generateWeeksAround(today, 30, 30);
         setTimeout(() => {
             if (todayRowElement) todayRowElement.scrollIntoView({ block: 'center' });
         }, 100);
