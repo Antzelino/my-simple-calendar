@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Calendar</title>
+    <style>
+        * { box-sizing: border-box; }
+
+        :root {
+            --cell:    min(70px, calc((100vw - 48px) / 9));
+            --font:    calc(var(--cell) * 0.27);
+            --font-sm: calc(var(--cell) * 0.23);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            padding-bottom: 120px;
+            background: #ffffff;
+        }
+
+        .calendar-container {
+            width: calc(9 * var(--cell));
+            margin: 0 auto;
+        }
+
+        table {
+            border-collapse: collapse;
+            table-layout: fixed;
+            width: 100%;
+        }
+
+        thead {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background: #ffffff;
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            text-align: center;
+            white-space: nowrap;
+            overflow: hidden;
+            position: relative;
+            background: #ffffff;
+            padding: 0;
+            height: 0;
+            padding-bottom: calc(100% / 9 / 1.909);
+            font-size: var(--font);
+        }
+
+        th {
+            background-color: #f2f2f2;
+            line-height: 1;
+        }
+
+        th > div, td > div.cell-content {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #000;
+        }
+
+        th.label-header,
+        td.label-cell {
+            border: none;
+            background: transparent !important;
+        }
+
+        .year-text {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: var(--font);
+            font-weight: bold;
+            color: #333;
+            white-space: nowrap;
+        }
+
+        .week-text {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            padding-left: 4px;
+            font-size: var(--font-sm);
+            font-weight: 400;
+            color: #888;
+            white-space: nowrap;
+        }
+
+        .month-start {
+            background-color: #e6f3ff !important;
+            font-weight: bold;
+        }
+
+        .weekend { background-color: #f0f0f0; }
+        .month-start.weekend { background-color: #d9e9f7 !important; }
+
+        .today {
+            box-shadow: inset 0 0 0 calc(var(--cell) * 0.057) red;
+        }
+
+        #back-to-today {
+            position: fixed;
+            bottom: calc(30px + env(safe-area-inset-bottom, 0px));
+            right: calc(30px + env(safe-area-inset-right, 0px));
+            padding: 14px 28px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 15px;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 100;
+            display: none;
+            transition: all 0.2s ease;
+            min-width: 44px;
+            min-height: 44px;
+        }
+
+        #back-to-today:hover  { background-color: #0056b3; transform: scale(1.05); }
+        #back-to-today:active { transform: scale(0.98); }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: calc(var(--cell) * 0.55);
+            color: #000;
+        }
+    </style>
+</head>
+<body>
+    <div class="calendar-container">
+        <h1>Calendar</h1>
+        <table id="calendar">
+            <thead>
+                <tr>
+                    <th class="label-header"></th>
+                    <th><div>Mon</div></th>
+                    <th><div>Tue</div></th>
+                    <th><div>Wed</div></th>
+                    <th><div>Thu</div></th>
+                    <th><div>Fri</div></th>
+                    <th><div>Sat</div></th>
+                    <th><div>Sun</div></th>
+                    <th class="label-header"></th>
+                </tr>
+            </thead>
+            <tbody id="calendar-body"></tbody>
+        </table>
+    </div>
+    <button id="back-to-today">Back to today</button>
+
+    <script>
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        let todayRowElement = null;
+        let isLoadingPast   = false;
+        let isLoadingFuture = false;
+        let firstDate = null;
+        let lastDate  = null;
+
+        function getMonday(d) {
+            const date = new Date(d);
+            const day  = date.getDay();
+            const diff = date.getDate() - day + (day === 0 ? -6 : 1);
+            return new Date(date.setDate(diff));
+        }
+
+        function getISOWeek(date) {
+            const target = new Date(date.valueOf());
+            const dayNr  = (date.getDay() + 6) % 7;
+            target.setDate(target.getDate() - dayNr + 3);
+            const firstThursday = target.valueOf();
+            target.setMonth(0, 1);
+            if (target.getDay() !== 4) {
+                target.setMonth(0, 1 + ((4 - target.getDay()) + 7) % 7);
+            }
+            return 1 + Math.ceil((firstThursday - target) / 604800000);
+        }
+
+        function addDayToRow(row, date) {
+            const cell    = row.insertCell();
+            const content = document.createElement('div');
+            content.className   = 'cell-content';
+            content.textContent = date.getDate();
+            cell.appendChild(content);
+
+            if (date.getDate() === 1) {
+                cell.classList.add('month-start');
+                content.textContent += ' ' + date.toLocaleString('en-US', { month: 'short' });
+            }
+
+            const dow = date.getDay();
+            if (dow === 6 || dow === 0) cell.classList.add('weekend');
+
+            if (date.getTime() === today.getTime()) {
+                cell.classList.add('today');
+                todayRowElement = row;
+            }
+        }
+
+        function generateWeek(startDate, prepend = false) {
+            const tbody  = document.getElementById('calendar-body');
+            const row    = prepend ? tbody.insertRow(0) : tbody.insertRow();
+            const monday = getMonday(startDate);
+
+            // Col 0 — year label (only on the row containing 1 Jan)
+            const yearCell = row.insertCell();
+            yearCell.className = 'label-cell';
+            for (let i = 0; i < 7; i++) {
+                const d = new Date(monday);
+                d.setDate(monday.getDate() + i);
+                if (d.getDate() === 1 && d.getMonth() === 0) {
+                    const span = document.createElement('div');
+                    span.className   = 'year-text';
+                    span.textContent = d.getFullYear();
+                    yearCell.appendChild(span);
+                    break;
+                }
+            }
+
+            // Cols 1–7 — day cells
+            for (let i = 0; i < 7; i++) {
+                const date = new Date(monday);
+                date.setDate(monday.getDate() + i);
+                addDayToRow(row, date);
+                if (!firstDate || date < firstDate) firstDate = new Date(date);
+                if (!lastDate  || date > lastDate)  lastDate  = new Date(date);
+            }
+
+            // Col 8 — week number (cross-year: favour new year's W1)
+            const sunday  = new Date(monday);
+            sunday.setDate(monday.getDate() + 6);
+            const weekNum = sunday.getFullYear() > monday.getFullYear()
+                ? getISOWeek(sunday)
+                : getISOWeek(monday);
+
+            const weekCell = row.insertCell();
+            weekCell.className = 'label-cell';
+            const wspan = document.createElement('div');
+            wspan.className   = 'week-text';
+            wspan.textContent = 'W\u2009' + weekNum;
+            weekCell.appendChild(wspan);
+
+            return row;
+        }
+
+        function generateWeeksAround(centerDate, weeksBefore, weeksAfter) {
+            const monday = getMonday(centerDate);
+            for (let i = weeksBefore; i > 0; i--) {
+                const d = new Date(monday);
+                d.setDate(monday.getDate() - i * 7);
+                generateWeek(d, false);
+            }
+            generateWeek(monday, false);
+            for (let i = 1; i <= weeksAfter; i++) {
+                const d = new Date(monday);
+                d.setDate(monday.getDate() + i * 7);
+                generateWeek(d, false);
+            }
+        }
+
+        function loadMorePast() {
+            if (isLoadingPast) return;
+            isLoadingPast = true;
+            const loadFrom  = new Date(firstDate);
+            const scrollPos = window.scrollY;
+            for (let i = 1; i <= 26; i++) {
+                const d = new Date(loadFrom);
+                d.setDate(loadFrom.getDate() - i * 7);
+                generateWeek(d, true);
+            }
+            requestAnimationFrame(() => window.scrollTo(0, scrollPos + 1000));
+            isLoadingPast = false;
+        }
+
+        function loadMoreFuture() {
+            if (isLoadingFuture) return;
+            isLoadingFuture = true;
+            const loadFrom = new Date(lastDate);
+            for (let i = 1; i <= 26; i++) {
+                const d = new Date(loadFrom);
+                d.setDate(loadFrom.getDate() + i * 7);
+                generateWeek(d);
+            }
+            isLoadingFuture = false;
+        }
+
+        function handleScroll() {
+            const scrollTop    = window.scrollY;
+            const scrollHeight = document.body.scrollHeight;
+            const clientHeight = window.innerHeight;
+
+            if (scrollTop < 500) loadMorePast();
+            if (scrollTop + clientHeight > scrollHeight - 500) loadMoreFuture();
+
+            const btn = document.getElementById('back-to-today');
+            if (todayRowElement) {
+                const rect = todayRowElement.getBoundingClientRect();
+                btn.style.display = (rect.top >= 0 && rect.bottom <= clientHeight) ? 'none' : 'block';
+            }
+        }
+
+        document.getElementById('back-to-today').addEventListener('click', () => {
+            if (todayRowElement) todayRowElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
+
+        generateWeeksAround(today, 15, 15);
+        setTimeout(() => {
+            if (todayRowElement) todayRowElement.scrollIntoView({ block: 'center' });
+        }, 100);
+
+        window.addEventListener('scroll', handleScroll);
+    </script>
+</body>
+</html>
