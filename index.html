@@ -19,6 +19,7 @@
             padding: 20px;
             padding-bottom: 120px;
             background: #ffffff;
+            overflow-anchor: none; /* prevent browser from auto-adjusting scroll on prepend */
         }
 
         .calendar-container {
@@ -111,8 +112,8 @@
 
         #back-to-today {
             position: fixed;
-            bottom: calc(30px + env(safe-area-inset-bottom, 0px));
-            right: calc(30px + env(safe-area-inset-right, 0px));
+            bottom: 30px;
+            right: 30px;
             padding: 14px 28px;
             background-color: #007bff;
             color: white;
@@ -276,15 +277,20 @@
         function loadMorePast() {
             if (isLoadingPast) return;
             isLoadingPast = true;
-            const loadFrom  = new Date(firstDate);
-            const scrollPos = window.scrollY;
+            const loadFrom     = new Date(firstDate);
+            const tbody        = document.getElementById('calendar-body');
+            const scrollYSnap  = window.scrollY;
+            const heightBefore = tbody.offsetHeight;
             for (let i = 1; i <= 26; i++) {
                 const d = new Date(loadFrom);
                 d.setDate(loadFrom.getDate() - i * 7);
                 generateWeek(d, true);
             }
-            requestAnimationFrame(() => window.scrollTo(0, scrollPos + 1000));
-            isLoadingPast = false;
+            requestAnimationFrame(() => {
+                const added = tbody.offsetHeight - heightBefore;
+                window.scrollTo(0, scrollYSnap + added);
+                isLoadingPast = false;
+            });
         }
 
         function loadMoreFuture() {
@@ -299,15 +305,32 @@
             isLoadingFuture = false;
         }
 
+        const btn = document.getElementById('back-to-today');
+
+        // Keep button just above the actual visible bottom edge,
+        // accounting for mobile browser chrome appearing/disappearing.
+        function updateButtonPosition() {
+            const vv = window.visualViewport;
+            if (!vv) return;
+            // Gap between layout viewport bottom and visual viewport bottom
+            const gap = window.innerHeight - (vv.offsetTop + vv.height);
+            btn.style.bottom = (30 + gap) + 'px';
+        }
+
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', updateButtonPosition);
+            window.visualViewport.addEventListener('scroll', updateButtonPosition);
+            updateButtonPosition();
+        }
+
         function handleScroll() {
             const scrollTop    = window.scrollY;
             const scrollHeight = document.body.scrollHeight;
-            const clientHeight = window.innerHeight;
+            const clientHeight = (window.visualViewport ? window.visualViewport.height : window.innerHeight);
 
             if (scrollTop < 500) loadMorePast();
             if (scrollTop + clientHeight > scrollHeight - 500) loadMoreFuture();
 
-            const btn = document.getElementById('back-to-today');
             if (todayRowElement) {
                 const rect = todayRowElement.getBoundingClientRect();
                 btn.style.display = (rect.top >= 0 && rect.bottom <= clientHeight) ? 'none' : 'block';
