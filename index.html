@@ -166,12 +166,18 @@
     <script>
         const today = new Date();
         today.setHours(0, 0, 0, 0);
+        if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 
         let todayRowElement = null;
         let isLoadingPast   = false;
         let isLoadingFuture = false;
+        let isInitializing  = true;
         let firstDate = null;
         let lastDate  = null;
+
+        function getViewportHeight() {
+            return window.visualViewport ? window.visualViewport.height : window.innerHeight;
+        }
 
         function getMonday(d) {
             const date = new Date(d);
@@ -317,38 +323,71 @@
             btn.style.bottom = (30 + gap) + 'px';
         }
 
+        function updateBackToTodayVisibility() {
+            if (!todayRowElement) return;
+
+            const clientHeight = getViewportHeight();
+            const rect = todayRowElement.getBoundingClientRect();
+            btn.style.display = (rect.top >= 0 && rect.bottom <= clientHeight) ? 'none' : 'block';
+        }
+
+        function scrollTodayToCenter(behavior = 'auto') {
+            if (!todayRowElement) return;
+
+            const clientHeight = getViewportHeight();
+            const rect = todayRowElement.getBoundingClientRect();
+            const targetTop = window.scrollY + rect.top - ((clientHeight - rect.height) / 2);
+
+            window.scrollTo({
+                top: Math.max(0, targetTop),
+                behavior
+            });
+        }
+
+        function finishInitialLayout() {
+            if (!isInitializing || !todayRowElement) return;
+
+            scrollTodayToCenter();
+            isInitializing = false;
+            handleScroll();
+        }
+
         if (window.visualViewport) {
-            window.visualViewport.addEventListener('resize', updateButtonPosition);
+            window.visualViewport.addEventListener('resize', () => {
+                updateButtonPosition();
+                if (isInitializing) scrollTodayToCenter();
+                else updateBackToTodayVisibility();
+            });
             window.visualViewport.addEventListener('scroll', updateButtonPosition);
             updateButtonPosition();
         }
 
         function handleScroll() {
             const scrollTop    = window.scrollY;
-            const scrollHeight = document.body.scrollHeight;
-            const clientHeight = (window.visualViewport ? window.visualViewport.height : window.innerHeight);
+            const clientHeight = getViewportHeight();
 
-            const threshold    = clientHeight * 3;
+            if (!isInitializing) {
+                const scrollHeight = document.documentElement.scrollHeight;
+                const threshold = clientHeight;
 
-            if (scrollTop < threshold) loadMorePast();
-            if (scrollTop + clientHeight > scrollHeight - threshold) loadMoreFuture();
-
-            if (todayRowElement) {
-                const rect = todayRowElement.getBoundingClientRect();
-                btn.style.display = (rect.top >= 0 && rect.bottom <= clientHeight) ? 'none' : 'block';
+                if (scrollTop < threshold) loadMorePast();
+                if (scrollTop + clientHeight > scrollHeight - threshold) loadMoreFuture();
             }
+
+            updateBackToTodayVisibility();
         }
 
         document.getElementById('back-to-today').addEventListener('click', () => {
-            if (todayRowElement) todayRowElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            scrollTodayToCenter('smooth');
         });
 
         generateWeeksAround(today, 30, 30);
-        setTimeout(() => {
-            if (todayRowElement) todayRowElement.scrollIntoView({ block: 'center' });
-        }, 100);
+        requestAnimationFrame(() => {
+            requestAnimationFrame(finishInitialLayout);
+        });
 
-        window.addEventListener('scroll', handleScroll);
+        window.addEventListener('load', finishInitialLayout, { once: true });
+        window.addEventListener('scroll', handleScroll, { passive: true });
     </script>
 </body>
 </html>
