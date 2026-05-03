@@ -16,15 +16,29 @@
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
             margin: 0;
+            height: 100vh;
+            height: 100dvh;
             padding: 20px;
-            padding-bottom: 120px;
             background: #ffffff;
-            overflow-anchor: none; /* prevent browser from auto-adjusting scroll on prepend */
+            overflow: hidden;
         }
 
         .calendar-container {
             width: calc(9 * var(--cell));
             margin: 0 auto;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+
+        .calendar-scroll {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            overflow-anchor: none; /* prevent browser from auto-adjusting scroll on prepend */
+            padding-bottom: 120px;
+            -webkit-overflow-scrolling: touch;
         }
 
         table {
@@ -144,40 +158,37 @@
 <body>
     <div class="calendar-container">
         <h1>Calendar</h1>
-        <table id="calendar">
-            <thead>
-                <tr>
-                    <th class="label-header"></th>
-                    <th><div>Mon</div></th>
-                    <th><div>Tue</div></th>
-                    <th><div>Wed</div></th>
-                    <th><div>Thu</div></th>
-                    <th><div>Fri</div></th>
-                    <th><div>Sat</div></th>
-                    <th><div>Sun</div></th>
-                    <th class="label-header"></th>
-                </tr>
-            </thead>
-            <tbody id="calendar-body"></tbody>
-        </table>
+        <div class="calendar-scroll" id="calendar-scroll">
+            <table id="calendar">
+                <thead>
+                    <tr>
+                        <th class="label-header"></th>
+                        <th><div>Mon</div></th>
+                        <th><div>Tue</div></th>
+                        <th><div>Wed</div></th>
+                        <th><div>Thu</div></th>
+                        <th><div>Fri</div></th>
+                        <th><div>Sat</div></th>
+                        <th><div>Sun</div></th>
+                        <th class="label-header"></th>
+                    </tr>
+                </thead>
+                <tbody id="calendar-body"></tbody>
+            </table>
+        </div>
     </div>
     <button id="back-to-today">Back to today</button>
 
     <script>
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 
         let todayRowElement = null;
         let isLoadingPast   = false;
         let isLoadingFuture = false;
-        let isInitializing  = true;
         let firstDate = null;
         let lastDate  = null;
-
-        function getViewportHeight() {
-            return window.visualViewport ? window.visualViewport.height : window.innerHeight;
-        }
+        const scroller = document.getElementById('calendar-scroll');
 
         function getMonday(d) {
             const date = new Date(d);
@@ -283,18 +294,16 @@
         function loadMorePast() {
             if (isLoadingPast) return;
             isLoadingPast = true;
-            const loadFrom     = new Date(firstDate);
-            const tbody        = document.getElementById('calendar-body');
-            const scrollYSnap  = window.scrollY;
-            const heightBefore = tbody.offsetHeight;
+            const loadFrom = new Date(firstDate);
+            const heightBefore = scroller.scrollHeight;
             for (let i = 1; i <= 52; i++) {
                 const d = new Date(loadFrom);
                 d.setDate(loadFrom.getDate() - i * 7);
                 generateWeek(d, true);
             }
             requestAnimationFrame(() => {
-                const added = tbody.offsetHeight - heightBefore;
-                window.scrollTo(0, scrollYSnap + added);
+                const added = scroller.scrollHeight - heightBefore;
+                scroller.scrollTop += added;
                 isLoadingPast = false;
             });
         }
@@ -326,53 +335,41 @@
         function updateBackToTodayVisibility() {
             if (!todayRowElement) return;
 
-            const clientHeight = getViewportHeight();
-            const rect = todayRowElement.getBoundingClientRect();
-            btn.style.display = (rect.top >= 0 && rect.bottom <= clientHeight) ? 'none' : 'block';
+            const rowTop = todayRowElement.offsetTop;
+            const rowBottom = rowTop + todayRowElement.offsetHeight;
+            const viewTop = scroller.scrollTop;
+            const viewBottom = viewTop + scroller.clientHeight;
+
+            btn.style.display = (rowTop >= viewTop && rowBottom <= viewBottom) ? 'none' : 'block';
         }
 
         function scrollTodayToCenter(behavior = 'auto') {
             if (!todayRowElement) return;
 
-            const clientHeight = getViewportHeight();
-            const rect = todayRowElement.getBoundingClientRect();
-            const targetTop = window.scrollY + rect.top - ((clientHeight - rect.height) / 2);
-
-            window.scrollTo({
+            const targetTop = todayRowElement.offsetTop - ((scroller.clientHeight - todayRowElement.offsetHeight) / 2);
+            scroller.scrollTo({
                 top: Math.max(0, targetTop),
                 behavior
             });
         }
 
-        function finishInitialLayout() {
-            if (!isInitializing || !todayRowElement) return;
-
-            scrollTodayToCenter();
-            isInitializing = false;
-            handleScroll();
-        }
-
         if (window.visualViewport) {
             window.visualViewport.addEventListener('resize', () => {
                 updateButtonPosition();
-                if (isInitializing) scrollTodayToCenter();
-                else updateBackToTodayVisibility();
+                updateBackToTodayVisibility();
             });
             window.visualViewport.addEventListener('scroll', updateButtonPosition);
             updateButtonPosition();
         }
 
         function handleScroll() {
-            const scrollTop    = window.scrollY;
-            const clientHeight = getViewportHeight();
+            const scrollTop = scroller.scrollTop;
+            const clientHeight = scroller.clientHeight;
+            const scrollHeight = scroller.scrollHeight;
+            const threshold = clientHeight;
 
-            if (!isInitializing) {
-                const scrollHeight = document.documentElement.scrollHeight;
-                const threshold = clientHeight;
-
-                if (scrollTop < threshold) loadMorePast();
-                if (scrollTop + clientHeight > scrollHeight - threshold) loadMoreFuture();
-            }
+            if (scrollTop < threshold) loadMorePast();
+            if (scrollTop + clientHeight > scrollHeight - threshold) loadMoreFuture();
 
             updateBackToTodayVisibility();
         }
@@ -383,11 +380,11 @@
 
         generateWeeksAround(today, 30, 30);
         requestAnimationFrame(() => {
-            requestAnimationFrame(finishInitialLayout);
+            scrollTodayToCenter();
+            handleScroll();
         });
 
-        window.addEventListener('load', finishInitialLayout, { once: true });
-        window.addEventListener('scroll', handleScroll, { passive: true });
+        scroller.addEventListener('scroll', handleScroll, { passive: true });
     </script>
 </body>
 </html>
