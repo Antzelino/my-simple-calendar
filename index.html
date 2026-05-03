@@ -164,9 +164,9 @@
     <button id="back-to-today">Back to today</button>
 
     <script>
-        const INITIAL_WEEKS_BEFORE = 52;
+        const INITIAL_WEEKS_BEFORE = 30;
         const INITIAL_WEEKS_AFTER  = 30;
-        const PAST_LOAD_WEEKS      = 104;
+        const PAST_LOAD_WEEKS      = 52;
         const FUTURE_LOAD_WEEKS    = 52;
 
         const today = new Date();
@@ -179,6 +179,7 @@
         let isAutoCentering = false;
         let firstDate = null;
         let lastDate  = null;
+        const calendarBody = document.getElementById('calendar-body');
 
         function getViewportHeight() {
             return window.visualViewport ? window.visualViewport.height : window.innerHeight;
@@ -224,9 +225,8 @@
             }
         }
 
-        function generateWeek(startDate, prepend = false) {
-            const tbody  = document.getElementById('calendar-body');
-            const row    = prepend ? tbody.insertRow(0) : tbody.insertRow();
+        function createWeekRow(startDate) {
+            const row = document.createElement('tr');
             const monday = getMonday(startDate);
 
             // Col 0 — year label (only on the row containing 1 Jan)
@@ -272,38 +272,49 @@
 
         function generateWeeksAround(centerDate, weeksBefore, weeksAfter) {
             const monday = getMonday(centerDate);
+            const fragment = document.createDocumentFragment();
             for (let i = weeksBefore; i > 0; i--) {
                 const d = new Date(monday);
                 d.setDate(monday.getDate() - i * 7);
-                generateWeek(d, false);
+                fragment.appendChild(createWeekRow(d));
             }
-            generateWeek(monday, false);
+            fragment.appendChild(createWeekRow(monday));
             for (let i = 1; i <= weeksAfter; i++) {
                 const d = new Date(monday);
                 d.setDate(monday.getDate() + i * 7);
-                generateWeek(d, false);
+                fragment.appendChild(createWeekRow(d));
             }
+            calendarBody.appendChild(fragment);
         }
 
         function loadMorePast() {
             if (isLoadingPast) return;
             isLoadingPast = true;
-            const loadFrom     = new Date(firstDate);
-            const tbody        = document.getElementById('calendar-body');
-            const scrollYSnap  = window.scrollY;
-            const heightBefore = tbody.offsetHeight;
-            for (let i = 1; i <= PAST_LOAD_WEEKS; i++) {
+            const loadFrom = new Date(firstDate);
+            const anchorRow = calendarBody.firstElementChild;
+            const anchorTop = anchorRow ? anchorRow.getBoundingClientRect().top : 0;
+            const fragment = document.createDocumentFragment();
+
+            for (let i = PAST_LOAD_WEEKS; i >= 1; i--) {
                 const d = new Date(loadFrom);
                 d.setDate(loadFrom.getDate() - i * 7);
-                generateWeek(d, true);
+                fragment.appendChild(createWeekRow(d));
             }
+
+            calendarBody.insertBefore(fragment, calendarBody.firstChild);
+
             requestAnimationFrame(() => {
-                const added = tbody.offsetHeight - heightBefore;
-                isAutoCentering = true;
-                window.scrollTo(0, scrollYSnap + added);
-                requestAnimationFrame(() => {
-                    isAutoCentering = false;
-                });
+                const delta = anchorRow ? anchorRow.getBoundingClientRect().top - anchorTop : 0;
+                if (delta !== 0) {
+                    isAutoCentering = true;
+                    window.scrollBy(0, delta);
+                    requestAnimationFrame(() => {
+                        isAutoCentering = false;
+                        updateBackToTodayVisibility();
+                    });
+                } else {
+                    updateBackToTodayVisibility();
+                }
                 isLoadingPast = false;
             });
         }
@@ -312,11 +323,13 @@
             if (isLoadingFuture) return;
             isLoadingFuture = true;
             const loadFrom = new Date(lastDate);
+            const fragment = document.createDocumentFragment();
             for (let i = 1; i <= FUTURE_LOAD_WEEKS; i++) {
                 const d = new Date(loadFrom);
                 d.setDate(loadFrom.getDate() + i * 7);
-                generateWeek(d);
+                fragment.appendChild(createWeekRow(d));
             }
+            calendarBody.appendChild(fragment);
             isLoadingFuture = false;
         }
 
@@ -374,12 +387,13 @@
             const scrollTop = window.scrollY;
             const clientHeight = getViewportHeight();
             const scrollHeight = document.documentElement.scrollHeight;
-            const rowHeight = todayRowElement ? todayRowElement.offsetHeight : 0;
-            const pastThreshold = Math.max(900, clientHeight * 2, rowHeight * 18);
+            const pastThreshold = Math.max(1200, clientHeight * 3);
             const futureThreshold = Math.max(200, clientHeight * 0.5);
 
-            if (scrollTop < pastThreshold) loadMorePast();
-            else if (scrollTop + clientHeight > scrollHeight - futureThreshold) loadMoreFuture();
+            if (hasUserScrolled) {
+                if (scrollTop < pastThreshold) loadMorePast();
+                else if (scrollTop + clientHeight > scrollHeight - futureThreshold) loadMoreFuture();
+            }
 
             updateBackToTodayVisibility();
         }
