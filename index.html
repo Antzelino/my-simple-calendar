@@ -164,6 +164,11 @@
     <button id="back-to-today">Back to today</button>
 
     <script>
+        const INITIAL_WEEKS_BEFORE = 52;
+        const INITIAL_WEEKS_AFTER  = 30;
+        const PAST_LOAD_WEEKS      = 104;
+        const FUTURE_LOAD_WEEKS    = 52;
+
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
@@ -287,7 +292,7 @@
             const tbody        = document.getElementById('calendar-body');
             const scrollYSnap  = window.scrollY;
             const heightBefore = tbody.offsetHeight;
-            for (let i = 1; i <= 52; i++) {
+            for (let i = 1; i <= PAST_LOAD_WEEKS; i++) {
                 const d = new Date(loadFrom);
                 d.setDate(loadFrom.getDate() - i * 7);
                 generateWeek(d, true);
@@ -298,7 +303,6 @@
                 window.scrollTo(0, scrollYSnap + added);
                 requestAnimationFrame(() => {
                     isAutoCentering = false;
-                    handleScroll();
                 });
                 isLoadingPast = false;
             });
@@ -308,7 +312,7 @@
             if (isLoadingFuture) return;
             isLoadingFuture = true;
             const loadFrom = new Date(lastDate);
-            for (let i = 1; i <= 52; i++) {
+            for (let i = 1; i <= FUTURE_LOAD_WEEKS; i++) {
                 const d = new Date(loadFrom);
                 d.setDate(loadFrom.getDate() + i * 7);
                 generateWeek(d);
@@ -370,7 +374,8 @@
             const scrollTop = window.scrollY;
             const clientHeight = getViewportHeight();
             const scrollHeight = document.documentElement.scrollHeight;
-            const pastThreshold = Math.max(600, clientHeight * 1.5);
+            const rowHeight = todayRowElement ? todayRowElement.offsetHeight : 0;
+            const pastThreshold = Math.max(900, clientHeight * 2, rowHeight * 18);
             const futureThreshold = Math.max(200, clientHeight * 0.5);
 
             if (scrollTop < pastThreshold) loadMorePast();
@@ -383,7 +388,7 @@
             scrollTodayToCenter('smooth');
         });
 
-        generateWeeksAround(today, 30, 30);
+        generateWeeksAround(today, INITIAL_WEEKS_BEFORE, INITIAL_WEEKS_AFTER);
         requestAnimationFrame(() => {
             scrollTodayToCenter();
             requestAnimationFrame(() => {
