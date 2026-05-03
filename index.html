@@ -171,6 +171,7 @@
 
         const today = new Date();
         today.setHours(0, 0, 0, 0);
+        if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 
         let todayRowElement = null;
         let isLoadingPast   = false;
@@ -411,7 +412,7 @@
             });
         });
 
-        window.addEventListener('load', () => {
+        window.addEventListener('pageshow', () => {
             if (!hasUserScrolled) scrollTodayToCenter();
         }, { once: true });
     </script>
