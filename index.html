@@ -298,6 +298,7 @@
                 window.scrollTo(0, scrollYSnap + added);
                 requestAnimationFrame(() => {
                     isAutoCentering = false;
+                    handleScroll();
                 });
                 isLoadingPast = false;
             });
@@ -369,10 +370,11 @@
             const scrollTop = window.scrollY;
             const clientHeight = getViewportHeight();
             const scrollHeight = document.documentElement.scrollHeight;
-            const threshold = Math.max(200, clientHeight * 0.5);
+            const pastThreshold = Math.max(600, clientHeight * 1.5);
+            const futureThreshold = Math.max(200, clientHeight * 0.5);
 
-            if (scrollTop < threshold) loadMorePast();
-            else if (scrollTop + clientHeight > scrollHeight - threshold) loadMoreFuture();
+            if (scrollTop < pastThreshold) loadMorePast();
+            else if (scrollTop + clientHeight > scrollHeight - futureThreshold) loadMoreFuture();
 
             updateBackToTodayVisibility();
         }
