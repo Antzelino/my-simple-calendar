@@ -19,7 +19,6 @@
             padding: 20px;
             padding-bottom: 120px;
             background: #ffffff;
-            overflow-anchor: none; /* prevent browser from auto-adjusting scroll on prepend */
         }
 
         .calendar-container {
@@ -38,6 +37,7 @@
             top: 0;
             z-index: 10;
             background: #ffffff;
+            overflow-anchor: none;
         }
 
         th, td {
@@ -138,6 +138,7 @@
             margin-bottom: 20px;
             font-size: calc(var(--cell) * 0.55);
             color: #000;
+            overflow-anchor: none;
         }
     </style>
 </head>
@@ -164,7 +165,7 @@
     <button id="back-to-today">Back to today</button>
 
     <script>
-        const INITIAL_WEEKS_BEFORE = 30;
+        const INITIAL_WEEKS_BEFORE = 52;
         const INITIAL_WEEKS_AFTER  = 30;
         const PAST_LOAD_WEEKS      = 52;
         const FUTURE_LOAD_WEEKS    = 52;
@@ -180,6 +181,7 @@
         let isAutoCentering = false;
         let firstDate = null;
         let lastDate  = null;
+        let lastScrollTop = 0;
         const calendarBody = document.getElementById('calendar-body');
 
         function getViewportHeight() {
@@ -292,8 +294,6 @@
             if (isLoadingPast) return;
             isLoadingPast = true;
             const loadFrom = new Date(firstDate);
-            const anchorRow = calendarBody.firstElementChild;
-            const anchorTop = anchorRow ? anchorRow.getBoundingClientRect().top : 0;
             const fragment = document.createDocumentFragment();
 
             for (let i = PAST_LOAD_WEEKS; i >= 1; i--) {
@@ -305,17 +305,8 @@
             calendarBody.insertBefore(fragment, calendarBody.firstChild);
 
             requestAnimationFrame(() => {
-                const delta = anchorRow ? anchorRow.getBoundingClientRect().top - anchorTop : 0;
-                if (delta !== 0) {
-                    isAutoCentering = true;
-                    window.scrollBy(0, delta);
-                    requestAnimationFrame(() => {
-                        isAutoCentering = false;
-                        updateBackToTodayVisibility();
-                    });
-                } else {
-                    updateBackToTodayVisibility();
-                }
+                lastScrollTop = window.scrollY;
+                updateBackToTodayVisibility();
                 isLoadingPast = false;
             });
         }
@@ -331,6 +322,7 @@
                 fragment.appendChild(createWeekRow(d));
             }
             calendarBody.appendChild(fragment);
+            lastScrollTop = window.scrollY;
             isLoadingFuture = false;
         }
 
@@ -367,6 +359,7 @@
                 behavior
             });
             requestAnimationFrame(() => {
+                lastScrollTop = window.scrollY;
                 isAutoCentering = false;
                 updateBackToTodayVisibility();
             });
@@ -388,14 +381,16 @@
             const scrollTop = window.scrollY;
             const clientHeight = getViewportHeight();
             const scrollHeight = document.documentElement.scrollHeight;
-            const pastThreshold = Math.max(1200, clientHeight * 3);
+            const pastThreshold = Math.max(400, clientHeight);
             const futureThreshold = Math.max(200, clientHeight * 0.5);
+            const direction = scrollTop > lastScrollTop ? 'down' : scrollTop < lastScrollTop ? 'up' : 'none';
 
             if (hasUserScrolled) {
-                if (scrollTop < pastThreshold) loadMorePast();
-                else if (scrollTop + clientHeight > scrollHeight - futureThreshold) loadMoreFuture();
+                if (direction === 'up' && scrollTop < pastThreshold) loadMorePast();
+                else if (direction === 'down' && scrollTop + clientHeight > scrollHeight - futureThreshold) loadMoreFuture();
             }
 
+            lastScrollTop = scrollTop;
             updateBackToTodayVisibility();
         }
 
