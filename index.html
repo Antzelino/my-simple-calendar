@@ -13,6 +13,15 @@
             --font-sm: calc(var(--cell) * 0.23);
         }
 
+        /*
+         * FIX 1 (scroll stop): explicit overflow-anchor:auto on the scroll
+         * container so the browser natively adjusts scrollTop when rows are
+         * prepended — no JS scroll manipulation required after insertBefore.
+         */
+        html {
+            overflow-anchor: auto;
+        }
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
             margin: 0;
@@ -294,21 +303,28 @@
             if (isLoadingPast) return;
             isLoadingPast = true;
             const loadFrom = new Date(firstDate);
-            const fragment = document.createDocumentFragment();
 
-            for (let i = PAST_LOAD_WEEKS; i >= 1; i--) {
-                const d = new Date(loadFrom);
-                d.setDate(loadFrom.getDate() - i * 7);
-                fragment.appendChild(createWeekRow(d));
-            }
-
-            calendarBody.insertBefore(fragment, calendarBody.firstChild);
-
-            requestAnimationFrame(() => {
+            /*
+             * FIX 2 (scroll stop): defer the DOM work into a separate task
+             * via setTimeout(0).  This lets the browser's compositor finish
+             * the current scroll frame before the main thread does any heavy
+             * work, so iOS momentum scroll is never interrupted.
+             * overflow-anchor:auto (set on <html> above) then adjusts
+             * scrollTop natively when the rows are prepended — no JS
+             * scrollTo/scrollBy call needed after insertBefore.
+             */
+            setTimeout(() => {
+                const fragment = document.createDocumentFragment();
+                for (let i = PAST_LOAD_WEEKS; i >= 1; i--) {
+                    const d = new Date(loadFrom);
+                    d.setDate(loadFrom.getDate() - i * 7);
+                    fragment.appendChild(createWeekRow(d));
+                }
+                calendarBody.insertBefore(fragment, calendarBody.firstChild);
                 lastScrollTop = window.scrollY;
                 updateBackToTodayVisibility();
                 isLoadingPast = false;
-            });
+            }, 0);
         }
 
         function loadMoreFuture() {
@@ -328,19 +344,15 @@
 
         const btn = document.getElementById('back-to-today');
 
-        // Keep button just above the actual visible bottom edge,
-        // accounting for mobile browser chrome appearing/disappearing.
         function updateButtonPosition() {
             const vv = window.visualViewport;
             if (!vv) return;
-            // Gap between layout viewport bottom and visual viewport bottom
             const gap = window.innerHeight - (vv.offsetTop + vv.height);
             btn.style.bottom = (30 + gap) + 'px';
         }
 
         function updateBackToTodayVisibility() {
             if (!todayRowElement) return;
-
             const clientHeight = getViewportHeight();
             const rect = todayRowElement.getBoundingClientRect();
             btn.style.display = (rect.top >= 0 && rect.bottom <= clientHeight) ? 'none' : 'block';
@@ -348,16 +360,11 @@
 
         function scrollTodayToCenter(behavior = 'auto') {
             if (!todayRowElement) return;
-
             const clientHeight = getViewportHeight();
             const rect = todayRowElement.getBoundingClientRect();
             const targetTop = window.scrollY + rect.top - ((clientHeight - rect.height) / 2);
-
             isAutoCentering = true;
-            window.scrollTo({
-                top: Math.max(0, targetTop),
-                behavior
-            });
+            window.scrollTo({ top: Math.max(0, targetTop), behavior });
             requestAnimationFrame(() => {
                 lastScrollTop = window.scrollY;
                 isAutoCentering = false;
@@ -381,7 +388,14 @@
             const scrollTop = window.scrollY;
             const clientHeight = getViewportHeight();
             const scrollHeight = document.documentElement.scrollHeight;
-            const pastThreshold = Math.max(400, clientHeight);
+            /*
+             * FIX 2 cont. (scroll stop): load past rows when the user is
+             * still 2 viewport-heights away from the top edge, not just 1.
+             * This means the setTimeout(0) insertion happens while the user
+             * is comfortably mid-scroll rather than right at the boundary,
+             * making any transient frame hiccup far less perceptible.
+             */
+            const pastThreshold   = Math.max(clientHeight * 2, 800);
             const futureThreshold = Math.max(200, clientHeight * 0.5);
             const direction = scrollTop > lastScrollTop ? 'down' : scrollTop < lastScrollTop ? 'up' : 'none';
 
@@ -399,13 +413,29 @@
         });
 
         generateWeeksAround(today, INITIAL_WEEKS_BEFORE, INITIAL_WEEKS_AFTER);
-        requestAnimationFrame(() => {
+
+        /*
+         * FIX 3 (today not centered): replace the single requestAnimationFrame
+         * with a ResizeObserver on the calendar body.
+         *
+         * The old single-rAF fired before the browser had computed the table's
+         * layout, so getBoundingClientRect() returned top:0 for every row.
+         * That made targetTop negative, Math.max(0,...) clamped it to 0, and
+         * scrollTo(0) did nothing — today ended up at the top, not the center.
+         *
+         * ResizeObserver fires *after* layout is fully computed (by spec), so
+         * getBoundingClientRect() is guaranteed to return the real position.
+         * One rAF after that (for the scroll listener) is plenty.
+         */
+        const initObserver = new ResizeObserver(() => {
+            initObserver.disconnect();
             scrollTodayToCenter();
             requestAnimationFrame(() => {
                 window.addEventListener('scroll', handleScroll, { passive: true });
                 updateBackToTodayVisibility();
             });
         });
+        initObserver.observe(calendarBody);
 
         window.addEventListener('pageshow', () => {
             if (!hasUserScrolled) scrollTodayToCenter();
