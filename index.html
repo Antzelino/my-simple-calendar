@@ -13,15 +13,6 @@
             --font-sm: calc(var(--cell) * 0.23);
         }
 
-        /*
-         * FIX 1 (scroll stop): explicit overflow-anchor:auto on the scroll
-         * container so the browser natively adjusts scrollTop when rows are
-         * prepended — no JS scroll manipulation required after insertBefore.
-         */
-        html {
-            overflow-anchor: auto;
-        }
-
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
             margin: 0;
@@ -142,18 +133,11 @@
         #back-to-today:hover  { background-color: #0056b3; transform: scale(1.05); }
         #back-to-today:active { transform: scale(0.98); }
 
-        h1 {
-            text-align: center;
-            margin-bottom: 20px;
-            font-size: calc(var(--cell) * 0.55);
-            color: #000;
-            overflow-anchor: none;
-        }
+
     </style>
 </head>
 <body>
     <div class="calendar-container">
-        <h1>Calendar</h1>
         <table id="calendar">
             <thead>
                 <tr>
@@ -304,15 +288,8 @@
             isLoadingPast = true;
             const loadFrom = new Date(firstDate);
 
-            /*
-             * FIX 2 (scroll stop): defer the DOM work into a separate task
-             * via setTimeout(0).  This lets the browser's compositor finish
-             * the current scroll frame before the main thread does any heavy
-             * work, so iOS momentum scroll is never interrupted.
-             * overflow-anchor:auto (set on <html> above) then adjusts
-             * scrollTop natively when the rows are prepended — no JS
-             * scrollTo/scrollBy call needed after insertBefore.
-             */
+            // Defer DOM work so the browser compositor finishes the current
+            // scroll frame first — keeps iOS momentum scroll uninterrupted.
             setTimeout(() => {
                 const fragment = document.createDocumentFragment();
                 for (let i = PAST_LOAD_WEEKS; i >= 1; i--) {
@@ -320,7 +297,13 @@
                     d.setDate(loadFrom.getDate() - i * 7);
                     fragment.appendChild(createWeekRow(d));
                 }
+                // Capture height before insert, then compensate immediately
+                // after — synchronously, before the browser paints — so the
+                // visible rows never jump. More reliable than overflow-anchor
+                // on window-level scroll across all mobile browsers.
+                const prevHeight = document.documentElement.scrollHeight;
                 calendarBody.insertBefore(fragment, calendarBody.firstChild);
+                window.scrollBy(0, document.documentElement.scrollHeight - prevHeight);
                 lastScrollTop = window.scrollY;
                 updateBackToTodayVisibility();
                 isLoadingPast = false;
@@ -388,13 +371,6 @@
             const scrollTop = window.scrollY;
             const clientHeight = getViewportHeight();
             const scrollHeight = document.documentElement.scrollHeight;
-            /*
-             * FIX 2 cont. (scroll stop): load past rows when the user is
-             * still 2 viewport-heights away from the top edge, not just 1.
-             * This means the setTimeout(0) insertion happens while the user
-             * is comfortably mid-scroll rather than right at the boundary,
-             * making any transient frame hiccup far less perceptible.
-             */
             const pastThreshold   = Math.max(clientHeight * 2, 800);
             const futureThreshold = Math.max(200, clientHeight * 0.5);
             const direction = scrollTop > lastScrollTop ? 'down' : scrollTop < lastScrollTop ? 'up' : 'none';
